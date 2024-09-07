@@ -61,8 +61,7 @@ add_action('dokan_store_profile_saved', 'dci_save_shipping_methods', 10, 2);
 
 /**
  * Exibe relatório de ganhos e custos de frete para vendedores e administradores.
- */
-/**
+ /**
  * Exibe relatório de ganhos e custos de frete para vendedores e administradores.
  */
 function dci_show_shipping_cost_report() {
@@ -71,85 +70,99 @@ function dci_show_shipping_cost_report() {
         return;
     }
 
-    // Obtém o ID do usuário atual
-    $current_user_id = get_current_user_id();
+    try {
+        // Obtém o ID do usuário atual
+        $current_user_id = get_current_user_id();
+        $is_admin = current_user_can('manage_woocommerce');
 
-    // Determina se o usuário é administrador
-    $is_admin = current_user_can('manage_woocommerce');
+        // Define os argumentos para consulta de pedidos
+        $args = [
+            'limit' => -1,
+            'status' => ['completed', 'processing', 'shipped'], // Adicione outros status se necessário
+        ];
 
-    // Define os argumentos para consulta de pedidos
-    $args = [
-        'limit' => -1,
-        'status' => ['completed', 'processing', 'shipped'], // Adicione outros status se necessário
-    ];
+        // Se o usuário não for administrador, filtra apenas os pedidos do vendedor
+        if (!$is_admin) {
+            $args['meta_key'] = '_dokan_order_owner';
+            $args['meta_value'] = $current_user_id;
+        }
 
-    // Se o usuário não for administrador, filtra apenas os pedidos do vendedor
-    if (!$is_admin) {
-        $args['meta_key'] = '_dokan_order_owner';
-        $args['meta_value'] = $current_user_id;
-    }
+        // Obtém os pedidos com base nos argumentos
+        $orders = wc_get_orders($args);
 
-    // Obtém os pedidos com base nos argumentos
-    $orders = wc_get_orders($args);
+        // Verifica se há pedidos antes de continuar
+        if (!$orders || empty($orders)) {
+            echo '<p>Nenhum pedido encontrado.</p>';
+            return;
+        }
 
-    // Inicializa variáveis para cálculo
-    $total_shipping_charged = 0;
-    $total_shipping_cost = 0;
+        // Inicializa variáveis para cálculo
+        $total_shipping_charged = 0;
+        $total_shipping_cost = 0;
 
-    // Monta a tabela de relatório
-    echo '<h2>Relatório de Custos de Frete</h2>';
-    echo '<table class="wp-list-table widefat fixed striped">';
-    echo '<thead>';
-    echo '<tr>';
-    echo '<th>Pedido</th>';
-    echo '<th>Data</th>';
-    echo '<th>Cliente</th>';
-    echo '<th>Frete Cobrado</th>';
-    echo '<th>Custo de Frete</th>';
-    echo '<th>Lucro de Frete</th>';
-    echo '</tr>';
-    echo '</thead>';
-    echo '<tbody>';
-
-    // Itera sobre cada pedido para calcular ganhos e custos
-    foreach ($orders as $order) {
-        $order_id = $order->get_id();
-        $order_date = $order->get_date_created()->format('d/m/Y');
-        $customer_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
-
-        // Valor de frete cobrado do cliente
-        $shipping_charged = $order->get_shipping_total();
-
-        // Custo de frete registrado pelo vendedor (pode ser adicionado via meta personalizado, ex.: '_shipping_cost')
-        $shipping_cost = (float) get_post_meta($order_id, '_shipping_cost', true);
-
-        // Calcula o lucro de frete
-        $shipping_profit = $shipping_charged - $shipping_cost;
-
-        // Adiciona aos totais
-        $total_shipping_charged += $shipping_charged;
-        $total_shipping_cost += $shipping_cost;
-
-        // Exibe os detalhes na tabela
+        // Monta a tabela de relatório
+        echo '<h2>Relatório de Custos de Frete</h2>';
+        echo '<table class="wp-list-table widefat fixed striped">';
+        echo '<thead>';
         echo '<tr>';
-        echo '<td>#' . $order_id . '</td>';
-        echo '<td>' . esc_html($order_date) . '</td>';
-        echo '<td>' . esc_html($customer_name) . '</td>';
-        echo '<td>' . wc_price($shipping_charged) . '</td>';
-        echo '<td>' . wc_price($shipping_cost) . '</td>';
-        echo '<td>' . wc_price($shipping_profit) . '</td>';
+        echo '<th>Pedido</th>';
+        echo '<th>Data</th>';
+        echo '<th>Cliente</th>';
+        echo '<th>Frete Cobrado</th>';
+        echo '<th>Custo de Frete</th>';
+        echo '<th>Lucro de Frete</th>';
         echo '</tr>';
-    }
+        echo '</thead>';
+        echo '<tbody>';
 
-    echo '</tbody>';
-    echo '<tfoot>';
-    echo '<tr>';
-    echo '<th colspan="3">Totais</th>';
-    echo '<th>' . wc_price($total_shipping_charged) . '</th>';
-    echo '<th>' . wc_price($total_shipping_cost) . '</th>';
-    echo '<th>' . wc_price($total_shipping_charged - $total_shipping_cost) . '</th>';
-    echo '</tr>';
-    echo '</tfoot>';
-    echo '</table>';
+        // Itera sobre cada pedido para calcular ganhos e custos
+        foreach ($orders as $order) {
+            if (!$order instanceof WC_Order) {
+                continue;
+            }
+
+            $order_id = $order->get_id();
+            $order_date = $order->get_date_created() ? $order->get_date_created()->format('d/m/Y') : 'N/A';
+            $customer_name = $order->get_billing_first_name() . ' ' . $order->get_billing_last_name();
+
+            // Valor de frete cobrado do cliente
+            $shipping_charged = $order->get_shipping_total();
+
+            // Custo de frete registrado pelo vendedor (pode ser adicionado via meta personalizado, ex.: '_shipping_cost')
+            $shipping_cost = (float) get_post_meta($order_id, '_shipping_cost', true) ?: 0;
+
+            // Calcula o lucro de frete
+            $shipping_profit = $shipping_charged - $shipping_cost;
+
+            // Adiciona aos totais
+            $total_shipping_charged += $shipping_charged;
+            $total_shipping_cost += $shipping_cost;
+
+            // Exibe os detalhes na tabela
+            echo '<tr>';
+            echo '<td>#' . esc_html($order_id) . '</td>';
+            echo '<td>' . esc_html($order_date) . '</td>';
+            echo '<td>' . esc_html($customer_name) . '</td>';
+            echo '<td>' . wc_price($shipping_charged) . '</td>';
+            echo '<td>' . wc_price($shipping_cost) . '</td>';
+            echo '<td>' . wc_price($shipping_profit) . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody>';
+        echo '<tfoot>';
+        echo '<tr>';
+        echo '<th colspan="3">Totais</th>';
+        echo '<th>' . wc_price($total_shipping_charged) . '</th>';
+        echo '<th>' . wc_price($total_shipping_cost) . '</th>';
+        echo '<th>' . wc_price($total_shipping_charged - $total_shipping_cost) . '</th>';
+        echo '</tr>';
+        echo '</tfoot>';
+        echo '</table>';
+    } catch (Exception $e) {
+        echo '<p>Ocorreu um erro ao gerar o relatório: ' . esc_html($e->getMessage()) . '</p>';
+    }
 }
 add_action('dokan_dashboard_content', 'dci_show_shipping_cost_report');
+
+
