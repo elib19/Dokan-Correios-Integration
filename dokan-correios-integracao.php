@@ -4,7 +4,7 @@ Plugin Name: Integração Dokan Correios
 Description: Integra o Dokan Pro com o WooCommerce Correios, utilizando o CEP do vendedor como origem.
 Version: 1.0
 Author: Eli Silva
-Author URI: https://brasilnarede.online
+Author URI: brasilnarede.online
 */
 
 // Evita acesso direto ao arquivo
