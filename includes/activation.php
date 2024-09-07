@@ -2,9 +2,11 @@
 
 // Função para ativar o plugin
 function dci_activate_plugin() {
+    // Inclui o arquivo de funções do WordPress necessário
+    include_once(ABSPATH . 'wp-admin/includes/plugin.php');
+
     // Verifica se o WooCommerce está ativo
     if (!is_plugin_active('woocommerce/woocommerce.php') && current_user_can('activate_plugins')) {
-        // Desativa o plugin caso o WooCommerce não esteja ativo
         deactivate_plugins(plugin_basename(__FILE__));
         wp_die(
             'Este plugin requer o WooCommerce para funcionar. Por favor, ative o WooCommerce primeiro.',
@@ -15,7 +17,6 @@ function dci_activate_plugin() {
 
     // Verifica se o Dokan está ativo
     if (!is_plugin_active('dokan-lite/dokan.php') && current_user_can('activate_plugins')) {
-        // Desativa o plugin caso o Dokan não esteja ativo
         deactivate_plugins(plugin_basename(__FILE__));
         wp_die(
             'Este plugin requer o Dokan para funcionar. Por favor, ative o Dokan primeiro.',
@@ -50,7 +51,6 @@ function dci_activate_plugin() {
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
 }
-register_activation_hook(__FILE__, 'dci_activate_plugin');
 
 // Função para desativar o plugin
 function dci_deactivate_plugin() {
@@ -59,4 +59,3 @@ function dci_deactivate_plugin() {
     delete_option('dci_plugin_version');
     delete_option('dci_custom_shipping_log');
 }
-register_deactivation_hook(__FILE__, 'dci_deactivate_plugin');
