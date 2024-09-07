@@ -1,87 +1,155 @@
 <?php
-// Evita acesso direto ao arquivo
-if (!defined('ABSPATH')) {
+/**
+ * Funções relacionadas à integração com os Correios para o Dokan.
+ */
+
+/**
+ * Obtém os métodos de frete dos Correios configurados pelo marketplace.
+ *
+ * @return array Lista de métodos de frete dos Correios.
+ */
+function dci_get_correios_shipping_methods() {
+    $methods = [];
+
+    // Obtém as instâncias de métodos de envio do WooCommerce
+    $shipping_methods = WC()->shipping->get_shipping_methods();
+
+    foreach ($shipping_methods as $method_id => $method) {
+        if (strpos($method_id, 'correios_') === 0) {
+            $methods[$method_id] = $method->get_title();
+        }
+    }
+
+    return $methods;
+}
+
+/**
+ * Obtém o tipo de frete configurado (SEDEX, PAC, etc.) para todos os vendedores ou um específico.
+ *
+ * @param bool $all_vendors Se verdadeiro, retorna o tipo de frete para todos os vendedores. Caso contrário, retorna o tipo para um vendedor específico.
+ * @param int|null $vendor_id O ID do vendedor específico (ou null para todos).
+ * @return string Tipo de frete configurado.
+ */
+function dci_get_shipping_type($all_vendors = false, $vendor_id = null) {
+    $shipping_type = 'pac'; // Valor padrão
+
+    if ($all_vendors) {
+        // Lógica para obter o tipo de frete configurado para todos os vendedores
+        $shipping_type = get_option('dci_default_shipping_type', 'pac');
+    } else {
+        // Lógica para obter o tipo de frete configurado para um vendedor específico
+        $vendor_shipping_type = get_user_meta($vendor_id, 'dci_vendor_shipping_type', true);
+        if ($vendor_shipping_type) {
+            $shipping_type = $vendor_shipping_type;
+        }
+    }
+
+    return $shipping_type;
+}
+
+/**
+ * Atualiza o tipo de frete configurado para um vendedor específico ou para todos os vendedores.
+ *
+ * @param string $shipping_type Tipo de frete (SEDEX, PAC, etc.).
+ * @param bool $all_vendors Se verdadeiro, aplica a todos os vendedores. Caso contrário, aplica ao vendedor específico.
+ * @param int|null $vendor_id O ID do vendedor específico (ou null para todos).
+ */
+function dci_update_shipping_type($shipping_type, $all_vendors = false, $vendor_id = null) {
+    if ($all_vendors) {
+        update_option('dci_default_shipping_type', $shipping_type);
+    } else {
+        update_user_meta($vendor_id, 'dci_vendor_shipping_type', $shipping_type);
+    }
+}
+
+/**
+ * Divide o carrinho de compras por vendedor.
+ *
+ * @param array $cart Cartão do cliente.
+ * @return array Carrinhos divididos por vendedor.
+ */
+function dci_split_cart_by_vendor($cart) {
+    $split_cart = [];
+
+    foreach ($cart['cart_contents'] as $cart_item_key => $cart_item) {
+        $product_id = $cart_item['product_id'];
+        $vendor_id = get_post_meta($product_id, '_dokan_vendor_id', true);
+
+        if (!$vendor_id) {
+            $vendor_id = 0; // Default para vendedores que não têm ID
+        }
+
+        if (!isset($split_cart[$vendor_id])) {
+            $split_cart[$vendor_id] = [];
+        }
+
+        $split_cart[$vendor_id][$cart_item_key] = $cart_item;
+    }
+
+    return $split_cart;
+}
+
+/**
+ * Atualiza o custo de frete no pedido.
+ *
+ * @param int $order_id ID do pedido.
+ * @param float $shipping_cost Custo de frete.
+ */
+function dci_update_order_shipping_cost($order_id, $shipping_cost) {
+    update_post_meta($order_id, '_shipping_cost', $shipping_cost);
+}
+
+/**
+ * Adiciona a funcionalidade de rastreamento de pedidos nos painéis dos vendedores.
+ */
+function dci_add_tracking_to_order_panel() {
+    if (!current_user_can('dokan_manage_seller_dashboard')) {
+        return;
+    }
+
+    echo '<h2>Rastreamento de Pedidos</h2>';
+
+    $orders = wc_get_orders([
+        'limit' => -1,
+        'status' => ['completed', 'processing'],
+        'meta_key' => '_dokan_order_owner',
+        'meta_value' => get_current_user_id(),
+    ]);
+
+    echo '<table class="wp-list-table widefat fixed striped">';
+    echo '<thead><tr><th>Pedido</th><th>Código de Rastreamento</th><th>Atualizar</th></tr></thead>';
+    echo '<tbody>';
+
+    foreach ($orders as $order) {
+        $order_id = $order->get_id();
+        $tracking_code = get_post_meta($order_id, '_tracking_code', true);
+
+        echo '<tr>';
+        echo '<td>#' . esc_html($order_id) . '</td>';
+        echo '<td>' . esc_html($tracking_code) . '</td>';
+        echo '<td><a href="' . esc_url(add_query_arg(['order_id' => $order_id], admin_url('admin-post.php?action=dci_update_tracking_code'))) . '">Atualizar Código de Rastreamento</a></td>';
+        echo '</tr>';
+    }
+
+    echo '</tbody>';
+    echo '</table>';
+}
+add_action('dokan_dashboard_content', 'dci_add_tracking_to_order_panel');
+
+/**
+ * Manipula a atualização do código de rastreamento de pedidos.
+ */
+function dci_update_tracking_code() {
+    if (!isset($_GET['order_id']) || !current_user_can('dokan_manage_seller_dashboard')) {
+        wp_die('Acesso não autorizado.');
+    }
+
+    $order_id = intval($_GET['order_id']);
+    $tracking_code = sanitize_text_field($_POST['tracking_code']);
+
+    update_post_meta($order_id, '_tracking_code', $tracking_code);
+
+    wp_redirect(add_query_arg(['updated' => 'true'], dokan_get_dashboard_page_url()));
     exit;
 }
-
-// Inclui o arquivo de helpers
-require_once plugin_dir_path(__FILE__) . 'helper.php';
-
-/**
- * Altera o CEP de origem do WooCommerce Correios para o CEP do vendedor.
- *
- * @param string $cep_origem O CEP de origem original.
- * @param string $metodo_entrega O método de entrega (correios_pac, correios_sedex, etc).
- * @param string $woocommerce_shipping_method_id O ID do método de entrega.
- * @param array $carrinho Os itens do carrinho.
- * @return string O CEP de origem atualizado.
- */
-function dci_muda_cep_origem($cep_origem, $metodo_entrega, $woocommerce_shipping_method_id, $carrinho) {
-    // Obtém o ID do vendedor principal do pedido
-    $seller_id = get_post_meta($carrinho['cart_id'], '_dokan_order_owner', true);
-
-    // Obtém o CEP do vendedor
-    $seller_cep = get_seller_cep($seller_id);
-
-    if (!empty($seller_cep)) {
-        return $seller_cep;
-    }
-
-    return $cep_origem;
-}
-add_filter('woocommerce_correios_origin_postcode', 'dci_muda_cep_origem', 10, 4);
-
-/**
- * Separa o carrinho do cliente em pacotes por vendedor com base no CEP de origem.
- *
- * @param array $packages Os pacotes originais.
- * @return array Os pacotes separados por vendedor.
- */
-function dci_separate_cart_by_vendor($packages) {
-    $new_packages = [];
-
-    foreach (WC()->cart->get_cart() as $item) {
-        $vendor_id = get_post_field('post_author', $item['product_id']);
-        $vendor_cep = get_seller_cep($vendor_id);
-
-        if (!isset($new_packages[$vendor_id])) {
-            $new_packages[$vendor_id] = [
-                'contents' => [],
-                'contents_cost' => 0,
-                'applied_coupons' => WC()->cart->get_applied_coupons(),
-                'user' => [
-                    'ID' => get_current_user_id(),
-                ],
-                'vendor_id' => $vendor_id,
-                'vendor_cep' => $vendor_cep,
-            ];
-        }
-
-        $new_packages[$vendor_id]['contents'][] = $item;
-        $new_packages[$vendor_id]['contents_cost'] += $item['line_total'];
-    }
-
-    return array_values($new_packages);
-}
-add_filter('woocommerce_cart_shipping_packages', 'dci_separate_cart_by_vendor');
-
-/**
- * Permite que vendedores atualizem o status dos pedidos e adicionem códigos de rastreamento.
- */
-function dci_vendor_manage_orders($order_id) {
-    $order = wc_get_order($order_id);
-    $vendor_id = get_current_user_id();
-
-    if (current_user_can('dokan_manage_order') && dokan_is_seller_enabled($vendor_id)) {
-        // Marcar pedido como enviado
-        if (isset($_POST['mark_as_shipped'])) {
-            $order->update_status('shipped', 'Pedido marcado como enviado pelo vendedor.');
-        }
-
-        // Adicionar código de rastreamento
-        if (isset($_POST['tracking_number'])) {
-            update_post_meta($order_id, '_tracking_number', sanitize_text_field($_POST['tracking_number']));
-        }
-    }
-}
-add_action('woocommerce_order_details_after_order_table', 'dci_vendor_manage_orders');
+add_action('admin_post_dci_update_tracking_code', 'dci_update_tracking_code');
