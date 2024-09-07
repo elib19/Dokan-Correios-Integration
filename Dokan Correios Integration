@@ -1,0 +1,114 @@
+<?php
+/*
+Plugin Name: Dokan Correios Integration
+Description: Integra o plugin Correios para WooCommerce com o Dokan, calculando o frete com base no endereço de cada vendedor.
+Version: 1.0
+Author: Eli Silva
+License: GPL2
+*/
+
+// Evita acesso direto ao arquivo
+if (!defined('ABSPATH')) {
+    exit;
+}
+
+// Função para ativar o plugin
+function dci_activate_plugin() {
+    // Verifica se o WooCommerce está ativo
+    if (!is_plugin_active('woocommerce/woocommerce.php') && current_user_can('activate_plugins')) {
+        // Desativa o plugin caso o WooCommerce não esteja ativo
+        deactivate_plugins(plugin_basename(__FILE__));
+        wp_die(
+            'Este plugin requer o WooCommerce para funcionar. Por favor, ative o WooCommerce primeiro.',
+            'Plugin Requerido',
+            array('back_link' => true)
+        );
+    }
+
+    // Verifica se o Dokan está ativo
+    if (!is_plugin_active('dokan-lite/dokan.php') && current_user_can('activate_plugins')) {
+        // Desativa o plugin caso o Dokan não esteja ativo
+        deactivate_plugins(plugin_basename(__FILE__));
+        wp_die(
+            'Este plugin requer o Dokan para funcionar. Por favor, ative o Dokan primeiro.',
+            'Plugin Requerido',
+            array('back_link' => true)
+        );
+    }
+
+    // Cria uma opção de configuração no banco de dados para marcar que o plugin foi ativado
+    if (!get_option('dci_plugin_installed')) {
+        // Define algumas configurações iniciais do plugin
+        add_option('dci_plugin_installed', true);
+        add_option('dci_plugin_version', '1.0');
+        add_option('dci_custom_shipping_log', 'enabled'); // Exemplo de uma configuração personalizada
+    }
+
+    // Exemplo de criação de tabela no banco de dados, caso necessário
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'dci_shipping_log'; // Nome da tabela a ser criada
+    $charset_collate = $wpdb->get_charset_collate();
+
+    // SQL para criar a tabela de log de fretes
+    $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        id mediumint(9) NOT NULL AUTO_INCREMENT,
+        vendor_id mediumint(9) NOT NULL,
+        shipping_data text NOT NULL,
+        created_at datetime DEFAULT CURRENT_TIMESTAMP NOT NULL,
+        PRIMARY KEY (id)
+    ) $charset_collate;";
+
+    // Inclui o arquivo necessário para a execução do comando dbDelta
+    require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+    dbDelta($sql);
+
+    // Qualquer outra funcionalidade que precise rodar na ativação pode ser adicionada aqui
+}
+register_activation_hook(__FILE__, 'dci_activate_plugin');
+
+// Função para desativar o plugin
+function dci_deactivate_plugin() {
+    // Exemplo: Remover opções do banco de dados ao desativar
+    delete_option('dci_plugin_installed');
+    delete_option('dci_plugin_version');
+    delete_option('dci_custom_shipping_log');
+}
+register_deactivation_hook(__FILE__, 'dci_deactivate_plugin');
+
+// Função principal que integra o Dokan com o plugin Correios.
+function dci_custom_dokan_vendor_shipping($rates, $package) {
+    // Verifica se o Dokan e WooCommerce estão ativos.
+    if (!class_exists('WeDevs_Dokan') || !class_exists('WooCommerce')) {
+        return $rates;
+    }
+
+    // Verifica se há produtos no pacote.
+    if (!isset($package['contents']) || empty($package['contents'])) {
+        return $rates;
+    }
+
+    // Obtém o ID do vendedor do primeiro produto do pacote.
+    $product = reset($package['contents']);
+    $vendor_id = get_post_field('post_author', $product['product_id']);
+
+    // Obtém o endereço do vendedor.
+    $vendor = dokan()->vendor->get($vendor_id);
+    $origin_address = $vendor->get_address();
+
+    // Verifica se o endereço do vendedor é válido.
+    if (empty($origin_address['postcode'])) {
+        return $rates; // Endereço do vendedor não configurado corretamente.
+    }
+
+    // Ajusta o pacote para usar o endereço de origem do vendedor.
+    $package['destination']['postcode'] = $origin_address['postcode'];
+    $package['destination']['city'] = $origin_address['city'];
+    $package['destination']['state'] = $origin_address['state'];
+
+    // Recalcula o frete com base no endereço do vendedor.
+    $new_rates = WC()->shipping()->calculate_shipping_for_package($package);
+
+    // Substitui as taxas antigas pelas novas.
+    return $new_rates['rates'];
+}
+add_filter('woocommerce_package_rates', 'dci_custom_dokan_vendor_shipping', 10, 2);
