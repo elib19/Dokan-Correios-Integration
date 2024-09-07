@@ -25,13 +25,13 @@ function dci_activate_plugin() {
     // Cria uma opção de configuração no banco de dados para marcar que o plugin foi ativado
     if (!get_option('dci_plugin_installed')) {
         add_option('dci_plugin_installed', true);
-        add_option('dci_plugin_version', '1.1');
+        add_option('dci_plugin_version', '1.0');
         add_option('dci_custom_shipping_log', 'enabled');
     }
 
-    // Exemplo de criação de tabela no banco de dados, caso necessário
+    // Cria a tabela de log de fretes no banco de dados
     global $wpdb;
-    $table_name = $wpdb->prefix . 'dci_shipping_log'; // Nome da tabela a ser criada
+    $table_name = $wpdb->prefix . 'dci_shipping_log';
     $charset_collate = $wpdb->get_charset_collate();
 
     $sql = "CREATE TABLE IF NOT EXISTS $table_name (
