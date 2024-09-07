@@ -3,7 +3,7 @@
 Plugin Name: Dokan Correios Integration
 Description: Integra o plugin Correios para WooCommerce com o Dokan, calculando o frete com base no endereço de cada vendedor.
 Version: 1.0
-Author: Eli Silva
+Author: Seu Nome
 License: GPL2
 */
 
@@ -12,7 +12,7 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
-// Inclui funções de ativação
+// Inclui o arquivo de ativação/desativação
 require_once plugin_dir_path(__FILE__) . 'includes/activation.php';
 
 // Função principal que integra o Dokan com o plugin Correios.
