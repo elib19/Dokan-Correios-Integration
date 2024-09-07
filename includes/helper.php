@@ -58,10 +58,7 @@ function dci_save_shipping_methods($user_id, $settings) {
     }
 }
 add_action('dokan_store_profile_saved', 'dci_save_shipping_methods', 10, 2);
-
 /**
- * Exibe relatório de ganhos e custos de frete para vendedores e administradores.
- /**
  * Exibe relatório de ganhos e custos de frete para vendedores e administradores.
  */
 function dci_show_shipping_cost_report() {
@@ -91,8 +88,9 @@ function dci_show_shipping_cost_report() {
         $orders = wc_get_orders($args);
 
         // Verifica se há pedidos antes de continuar
-        if (!$orders || empty($orders)) {
+        if (empty($orders)) {
             echo '<p>Nenhum pedido encontrado.</p>';
+            error_log('Nenhum pedido encontrado para o usuário: ' . $current_user_id);
             return;
         }
 
@@ -118,6 +116,7 @@ function dci_show_shipping_cost_report() {
         // Itera sobre cada pedido para calcular ganhos e custos
         foreach ($orders as $order) {
             if (!$order instanceof WC_Order) {
+                error_log('Objeto de pedido inválido: ' . print_r($order, true));
                 continue;
             }
 
@@ -127,8 +126,12 @@ function dci_show_shipping_cost_report() {
 
             // Valor de frete cobrado do cliente
             $shipping_charged = $order->get_shipping_total();
+            if (!is_numeric($shipping_charged)) {
+                error_log('Erro ao obter o frete cobrado no pedido #' . $order_id);
+                $shipping_charged = 0;
+            }
 
-            // Custo de frete registrado pelo vendedor (pode ser adicionado via meta personalizado, ex.: '_shipping_cost')
+            // Custo de frete registrado pelo vendedor (meta personalizado, ex.: '_shipping_cost')
             $shipping_cost = (float) get_post_meta($order_id, '_shipping_cost', true) ?: 0;
 
             // Calcula o lucro de frete
@@ -160,9 +163,8 @@ function dci_show_shipping_cost_report() {
         echo '</tfoot>';
         echo '</table>';
     } catch (Exception $e) {
-        echo '<p>Ocorreu um erro ao gerar o relatório: ' . esc_html($e->getMessage()) . '</p>';
+        error_log('Erro na função dci_show_shipping_cost_report: ' . $e->getMessage());
+        echo '<p>Ocorreu um erro ao gerar o relatório. Consulte o log de erros para mais detalhes.</p>';
     }
 }
 add_action('dokan_dashboard_content', 'dci_show_shipping_cost_report');
-
-
