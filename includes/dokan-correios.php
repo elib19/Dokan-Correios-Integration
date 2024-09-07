@@ -4,6 +4,108 @@
  */
 
 /**
+ * Adiciona o submenu de Correios ao menu de envio do Dokan.
+ */
+function dci_add_correios_submenu() {
+    add_submenu_page(
+        'dokan', // Slug do menu principal (Dokan)
+        'Correios', // Título da página
+        'Correios', // Título do submenu
+        'manage_woocommerce', // Capacidade necessária
+        'dci-correios', // Slug do submenu
+        'dci_correios_settings_page' // Função que exibe o conteúdo da página
+    );
+}
+add_action('admin_menu', 'dci_add_correios_submenu');
+
+/**
+ * Renderiza o conteúdo da página do submenu de Correios.
+ */
+function dci_correios_settings_page() {
+    ?>
+    <div class="wrap">
+        <h1>Configurações de Correios</h1>
+        <form method="post" action="options.php">
+            <?php
+            settings_fields('dci_correios_options_group');
+            do_settings_sections('dci-correios');
+            submit_button();
+            ?>
+        </form>
+    </div>
+    <?php
+}
+
+/**
+ * Registra as configurações da página de Correios.
+ */
+function dci_register_correios_settings() {
+    register_setting('dci_correios_options_group', 'dci_correios_settings');
+    
+    add_settings_section(
+        'dci_correios_main_section',
+        'Configurações Principais',
+        'dci_correios_section_text',
+        'dci-correios'
+    );
+    
+    add_settings_field(
+        'dci_correios_shipping_type',
+        'Tipo de Frete',
+        'dci_correios_shipping_type_callback',
+        'dci-correios',
+        'dci_correios_main_section'
+    );
+
+    add_settings_field(
+        'dci_correios_default_shipping_type',
+        'Tipo de Frete Padrão para Todos os Vendedores',
+        'dci_correios_default_shipping_type_callback',
+        'dci-correios',
+        'dci_correios_main_section'
+    );
+}
+add_action('admin_init', 'dci_register_correios_settings');
+
+/**
+ * Descreve a seção de configurações de Correios.
+ */
+function dci_correios_section_text() {
+    echo '<p>Configure as opções de frete dos Correios para o Dokan aqui.</p>';
+}
+
+/**
+ * Exibe o campo de seleção para o tipo de frete.
+ */
+function dci_correios_shipping_type_callback() {
+    $options = get_option('dci_correios_settings');
+    $shipping_type = isset($options['shipping_type']) ? $options['shipping_type'] : 'pac';
+
+    ?>
+    <select name="dci_correios_settings[shipping_type]">
+        <option value="pac" <?php selected($shipping_type, 'pac'); ?>>PAC</option>
+        <option value="sedex" <?php selected($shipping_type, 'sedex'); ?>>SEDEX</option>
+        <!-- Adicione mais opções de frete conforme necessário -->
+    </select>
+    <?php
+}
+
+/**
+ * Exibe o campo de seleção para o tipo de frete padrão para todos os vendedores.
+ */
+function dci_correios_default_shipping_type_callback() {
+    $default_shipping_type = get_option('dci_default_shipping_type', 'pac');
+
+    ?>
+    <select name="dci_default_shipping_type">
+        <option value="pac" <?php selected($default_shipping_type, 'pac'); ?>>PAC</option>
+        <option value="sedex" <?php selected($default_shipping_type, 'sedex'); ?>>SEDEX</option>
+        <!-- Adicione mais opções de frete conforme necessário -->
+    </select>
+    <?php
+}
+
+/**
  * Obtém os métodos de frete dos Correios configurados pelo marketplace.
  *
  * @return array Lista de métodos de frete dos Correios.
@@ -147,9 +249,53 @@ function dci_update_tracking_code() {
     $order_id = intval($_GET['order_id']);
     $tracking_code = sanitize_text_field($_POST['tracking_code']);
 
-    update_post_meta($order_id, '_tracking_code', $tracking_code);
+    if ($order_id && $tracking_code) {
+        update_post_meta($order_id, '_tracking_code', $tracking_code);
+        wp_redirect(add_query_arg('updated', 'true', wp_get_referer()));
+        exit;
+    }
 
-    wp_redirect(add_query_arg(['updated' => 'true'], dokan_get_dashboard_page_url()));
-    exit;
+    wp_die('Código de rastreamento inválido.');
 }
 add_action('admin_post_dci_update_tracking_code', 'dci_update_tracking_code');
+
+/**
+ * Exibe relatórios de ganhos e custos de frete.
+ */
+function dci_show_shipping_cost_report() {
+    if (current_user_can('manage_woocommerce') || current_user_can('dokan_manage_seller_dashboard')) {
+        global $wpdb;
+
+        $query = "
+            SELECT
+                p.ID AS order_id,
+                pm.meta_value AS shipping_cost,
+                (SELECT SUM(meta_value) FROM {$wpdb->prefix}postmeta WHERE meta_key = '_order_total' AND post_id = p.ID) AS total_order_value
+            FROM
+                {$wpdb->prefix}posts p
+                INNER JOIN {$wpdb->prefix}postmeta pm ON p.ID = pm.post_id
+            WHERE
+                p.post_type = 'shop_order'
+                AND pm.meta_key = '_shipping_cost'
+                AND p.post_status IN ('wc-completed', 'wc-processing')
+        ";
+
+        $results = $wpdb->get_results($query);
+
+        echo '<h2>Relatório de Custos de Frete</h2>';
+        echo '<table class="wp-list-table widefat fixed striped">';
+        echo '<thead><tr><th>ID do Pedido</th><th>Custo de Frete</th><th>Valor Total do Pedido</th></tr></thead>';
+        echo '<tbody>';
+
+        foreach ($results as $row) {
+            echo '<tr>';
+            echo '<td>' . esc_html($row->order_id) . '</td>';
+            echo '<td>' . esc_html($row->shipping_cost) . '</td>';
+            echo '<td>' . esc_html($row->total_order_value) . '</td>';
+            echo '</tr>';
+        }
+
+        echo '</tbody>';
+        echo '</table>';
+    }
+}
