@@ -1,15 +1,22 @@
 <?php
+/*
+Plugin Name: Integração Dokan Correios
+Description: Integra o Dokan Pro com o WooCommerce Correios, utilizando o CEP do vendedor como origem.
+Version: 1.0
+Author: Eli Silva
+Author URI: brasilnarede.online
+*/
+
 // Evita acesso direto ao arquivo
-if (!defined('WP_UNINSTALL_PLUGIN')) {
+if (!defined('ABSPATH')) {
     exit;
 }
 
-// Remove as opções do banco de dados
-delete_option('dci_plugin_installed');
-delete_option('dci_plugin_version');
-delete_option('dci_custom_shipping_log');
+// Inclui os arquivos necessários
+require_once plugin_dir_path(__FILE__) . 'includes/activation.php';
+require_once plugin_dir_path(__FILE__) . 'includes/dokan-correios.php';
+require_once plugin_dir_path(__FILE__) . 'includes/helper.php';
 
-// Exclui a tabela de logs de frete, se necessário
-global $wpdb;
-$table_name = $wpdb->prefix . 'dci_shipping_log';
-$wpdb->query("DROP TABLE IF EXISTS $table_name");
+// Funções de ativação e desativação
+register_activation_hook(__FILE__, 'dci_activate_plugin');
+register_deactivation_hook(__FILE__, 'dci_deactivate_plugin');
