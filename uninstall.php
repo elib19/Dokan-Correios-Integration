@@ -9,7 +9,7 @@ delete_option('dci_plugin_installed');
 delete_option('dci_plugin_version');
 delete_option('dci_custom_shipping_log');
 
-// Exclui a tabela de logs de frete
+// Exclui a tabela de logs de frete, se necessário
 global $wpdb;
 $table_name = $wpdb->prefix . 'dci_shipping_log';
 $wpdb->query("DROP TABLE IF EXISTS $table_name");
