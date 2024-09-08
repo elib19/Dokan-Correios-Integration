@@ -1,9 +1,15 @@
 <?php
 
+// Evita acesso direto ao arquivo
+if (!defined('ABSPATH')) {
+    exit;
+}
+
 // Função para ativar o plugin
 function dci_activate_plugin() {
     // Verifica se o WooCommerce está ativo
     if (!is_plugin_active('woocommerce/woocommerce.php') && current_user_can('activate_plugins')) {
+        // Desativa o plugin caso o WooCommerce não esteja ativo
         deactivate_plugins(plugin_basename(__FILE__));
         wp_die(
             'Este plugin requer o WooCommerce para funcionar. Por favor, ative o WooCommerce primeiro.',
@@ -14,6 +20,7 @@ function dci_activate_plugin() {
 
     // Verifica se o Dokan está ativo
     if (!is_plugin_active('dokan-lite/dokan.php') && current_user_can('activate_plugins')) {
+        // Desativa o plugin caso o Dokan não esteja ativo
         deactivate_plugins(plugin_basename(__FILE__));
         wp_die(
             'Este plugin requer o Dokan para funcionar. Por favor, ative o Dokan primeiro.',
@@ -24,16 +31,18 @@ function dci_activate_plugin() {
 
     // Cria uma opção de configuração no banco de dados para marcar que o plugin foi ativado
     if (!get_option('dci_plugin_installed')) {
+        // Define algumas configurações iniciais do plugin
         add_option('dci_plugin_installed', true);
         add_option('dci_plugin_version', '1.0');
-        add_option('dci_custom_shipping_log', 'enabled');
+        add_option('dci_custom_shipping_log', 'enabled'); // Exemplo de uma configuração personalizada
     }
 
-    // Cria a tabela de log de fretes no banco de dados
+    // Exemplo de criação de tabela no banco de dados, caso necessário
     global $wpdb;
-    $table_name = $wpdb->prefix . 'dci_shipping_log';
+    $table_name = $wpdb->prefix . 'dci_shipping_log'; // Nome da tabela a ser criada
     $charset_collate = $wpdb->get_charset_collate();
 
+    // SQL para criar a tabela de log de fretes
     $sql = "CREATE TABLE IF NOT EXISTS $table_name (
         id mediumint(9) NOT NULL AUTO_INCREMENT,
         vendor_id mediumint(9) NOT NULL,
@@ -42,15 +51,19 @@ function dci_activate_plugin() {
         PRIMARY KEY (id)
     ) $charset_collate;";
 
+    // Inclui o arquivo necessário para a execução do comando dbDelta
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
 }
-register_activation_hook(__FILE__, 'dci_activate_plugin');
 
 // Função para desativar o plugin
 function dci_deactivate_plugin() {
+    // Remove opções do banco de dados ao desativar
     delete_option('dci_plugin_installed');
     delete_option('dci_plugin_version');
     delete_option('dci_custom_shipping_log');
 }
+
+// Registra as funções de ativação e desativação do plugin
+register_activation_hook(__FILE__, 'dci_activate_plugin');
 register_deactivation_hook(__FILE__, 'dci_deactivate_plugin');
